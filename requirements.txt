@@ -2,3 +2,4 @@ discord.py
 Flask
 Pillow
 gunicorn
+pip install python-dotenv

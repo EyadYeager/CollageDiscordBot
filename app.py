@@ -5,6 +5,8 @@ import os
 import io
 import threading
 from flask import Flask
+from dotenv import load_dotenv
+load_dotenv()  
 
 # --- FLASK SETUP (To keep Render happy) ---
 app = Flask('')
@@ -61,4 +63,4 @@ async def collage(ctx):
 if __name__ == "__main__":
     t = threading.Thread(target=run_flask)
     t.start()
-    bot.run(os.environ.get("DISCORD_
+    bot.run(os.environ.get("DISCORD_TOKEN"))
