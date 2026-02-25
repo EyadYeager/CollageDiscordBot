@@ -88,48 +88,59 @@ async def collage(ctx):
         pass
 
 def search_image(query):
-    """Searches DuckDuckGo for an image and returns the raw bytes"""
+    """Searches DuckDuckGo and tries to find a downloadable image"""
     with DDGS() as ddgs:
-        # We search for the query + " anime" to get better results
-        results = ddgs.images(f"{query} anime wallpaper", max_results=1)
-        if results:
-            img_url = results[0]['image']
-            response = requests.get(img_url, timeout=10)
-            return response.content
+        # We try to get 5 results so if the 1st one fails, we have backups
+        results = ddgs.images(f"{query} anime square icon", max_results=5)
+        if not results:
+            return None
+        
+        for res in results:
+            try:
+                img_url = res['image']
+                # Adding a User-Agent makes the bot look like a real browser
+                headers = {'User-Agent': 'Mozilla/5.0'}
+                response = requests.get(img_url, headers=headers, timeout=5)
+                if response.status_code == 200:
+                    return response.content
+            except:
+                continue # Try the next search result if this one fails
     return None
 
 @bot.command()
 async def list(ctx, *, text: str):
-    """Usage: !list Naruto, One Piece, Bleach, etc (9 names)"""
     names = [name.strip() for name in text.split(',')]
     
     if len(names) != 9:
-        return await ctx.send(f"I need exactly 9 names separated by commas! You gave me {len(names)}.")
+        return await ctx.send(f"I need exactly 9 names! You gave me {len(names)}.")
 
-    processing_msg = await ctx.send(f"Searching for 9 images... 🔍 (This takes a few seconds)")
+    status_msg = await ctx.send("Searching for images... 🔍")
     
     images = []
+    failed_names = []
+
     for name in names:
+        await status_msg.edit(content=f"Searching for: **{name}**... ({len(images)}/9)")
         try:
             img_data = search_image(name)
             if img_data:
                 images.append(img_data)
             else:
-                await ctx.send(f"Could not find an image for: {name}")
-        except Exception as e:
-            print(f"Error searching for {name}: {e}")
+                failed_names.append(name)
+        except Exception:
+            failed_names.append(name)
+
+    if failed_names:
+        await ctx.send(f"❌ Could not find images for: {', '.join(failed_names)}")
 
     if len(images) < 9:
-        return await ctx.send("Failed to find 9 valid images. Try different names!")
+        return await ctx.send("Missing images. Please try different keywords!")
 
-    await processing_msg.edit(content="Creating your 3x3 list... 🎨")
+    await status_msg.edit(content="Stitching your 3x3 together... 🎨")
     
-    # Use your existing create_collage function
     final_img = create_collage(images)
-    await ctx.send(content=f"Here is your 3x3 for: **{', '.join(names)}**", 
-                   file=discord.File(fp=final_img, filename="list_result.png"))
-    
-    await processing_msg.delete()
+    await ctx.send(file=discord.File(fp=final_img, filename="list.png"))
+    await status_msg.delete()
 
 # --- START BOTH ---
 if __name__ == "__main__":
