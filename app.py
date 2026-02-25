@@ -10,7 +10,7 @@ load_dotenv()
 from logic import create_3x3_collage
 from duckduckgo_search import DDGS
 import requests
-
+import time 
 # --- FLASK SETUP (To keep Render happy) ---
 app = Flask('')
 
@@ -88,60 +88,58 @@ async def collage(ctx):
         pass
 
 def search_image(query):
-    """Searches DuckDuckGo and tries to find a downloadable image"""
-    with DDGS() as ddgs:
-        # We try to get 5 results so if the 1st one fails, we have backups
-        results = ddgs.images(f"{query} anime square icon", max_results=5)
-        if not results:
-            return None
-        
-        for res in results:
-            try:
-                img_url = res['image']
-                # Adding a User-Agent makes the bot look like a real browser
-                headers = {'User-Agent': 'Mozilla/5.0'}
-                response = requests.get(img_url, headers=headers, timeout=5)
-                if response.status_code == 200:
-                    return response.content
-            except:
-                continue # Try the next search result if this one fails
-    return None
+    """Searches with a specific User-Agent to avoid blocks"""
+    # Adding 'icon' or 'square' helps get better 3x3 results
+    search_query = f"{query} anime square" 
+    
+    try:
+        with DDGS() as ddgs:
+            # We try to get the first 3 results as backups
+            results = ddgs.images(search_query, max_results=3)
+            if results:
+                for res in results:
+                    img_url = res['image']
+                    # This header makes the bot look like a real person browsing
+                    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"}
+                    img_res = requests.get(img_url, headers=headers, timeout=5)
+                    if img_res.status_code == 200:
+                        return img_res.content
+        return None
+    except Exception as e:
+        print(f"Search error for {query}: {e}")
+        return None
 
 @bot.command()
 async def list(ctx, *, text: str):
     names = [name.strip() for name in text.split(',')]
-    
     if len(names) != 9:
         return await ctx.send(f"I need exactly 9 names! You gave me {len(names)}.")
 
-    status_msg = await ctx.send("Searching for images... 🔍")
-    
+    status_msg = await ctx.send("Starting your anime search... 🚀")
     images = []
-    failed_names = []
-
+    
     for name in names:
         await status_msg.edit(content=f"Searching for: **{name}**... ({len(images)}/9)")
-        try:
-            img_data = search_image(name)
-            if img_data:
-                images.append(img_data)
-            else:
-                failed_names.append(name)
-        except Exception:
-            failed_names.append(name)
+        img_data = search_image(name)
+        
+        if img_data:
+            images.append(img_data)
+        else:
+            # Fallback: If search fails, use a grey placeholder so the collage doesn't break
+            placeholder = Image.new('RGB', (300, 300), color=(70, 70, 70))
+            img_byte_arr = io.BytesIO()
+            placeholder.save(img_byte_arr, format='PNG')
+            images.append(img_byte_arr.getvalue())
+            await ctx.send(f"⚠️ Could not find '{name}', using a placeholder.")
+        
+        time.sleep(1.5) # Wait 1.5 seconds between searches to avoid being banned
 
-    if failed_names:
-        await ctx.send(f"❌ Could not find images for: {', '.join(failed_names)}")
-
-    if len(images) < 9:
-        return await ctx.send("Missing images. Please try different keywords!")
-
-    await status_msg.edit(content="Stitching your 3x3 together... 🎨")
-    
+    await status_msg.edit(content="Stitching images together... 🎨")
     final_img = create_collage(images)
-    await ctx.send(file=discord.File(fp=final_img, filename="list.png"))
+    await ctx.send(file=discord.File(fp=final_img, filename="my_list.png"))
     await status_msg.delete()
 
+    
 # --- START BOTH ---
 if __name__ == "__main__":
     t = threading.Thread(target=run_flask)

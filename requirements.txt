@@ -1,7 +1,7 @@
 discord.py
 Flask
 Pillow
-gunicorn
 python-dotenv
 duckduckgo_search
 requests
+time
