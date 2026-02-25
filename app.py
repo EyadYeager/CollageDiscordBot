@@ -40,33 +40,50 @@ def create_collage(img_list):
 
 @bot.command()
 async def collage(ctx):
-    # 1. Look back at the last 50 messages (gives more room for errors)
-    await ctx.send("Scanning for images... 🔍")
+    await ctx.send("Scanning for images and preparing to clean up... 🔍")
     
     images = []
+    messages_to_delete = []
+    
     async for message in ctx.channel.history(limit=50):
-        # 2. Skip the bot's own messages so they don't count towards the 'limit'
         if message.author == bot.user:
             continue
             
         if message.attachments:
+            found_image_in_msg = False
             for attachment in message.attachments:
                 if any(ext in attachment.url.lower() for ext in ['jpg', 'jpeg', 'png', 'webp']):
                     img_data = await attachment.read()
                     images.append(img_data)
+                    found_image_in_msg = True
+            
+            # If this message had a valid image, save it for deletion later
+            if found_image_in_msg:
+                messages_to_delete.append(message)
         
-        # Stop once we hit 9
         if len(images) >= 9:
             break
 
     if len(images) < 9:
-        return await ctx.send(f"I found {len(images)} images in recent history, but I need 9. Try waiting 5 seconds for uploads to finish!")
+        return await ctx.send(f"I found {len(images)} images, but I need 9. I won't delete anything yet!")
 
-    await ctx.send("Creating your 3x3 masterpiece... 🎨")
+    processing_msg = await ctx.send("Creating masterpiece and cleaning up chat... 🎨")
     
-    # Run the processing in a separate thread so the bot doesn't "freeze"
+    # Generate collage
     final_img = create_collage(images[:9])
+    
+    # Send the final result
     await ctx.send(file=discord.File(fp=final_img, filename="collage_result.png"))
+
+    # Cleanup: Delete the source messages and the "Scanning" message
+    try:
+        for msg in messages_to_delete:
+            await msg.delete()
+        await processing_msg.delete()
+    except discord.Forbidden:
+        await ctx.send("I tried to delete the images but I don't have 'Manage Messages' permissions!")
+    except discord.HTTPException:
+        pass
 
 # --- START BOTH ---
 if __name__ == "__main__":
