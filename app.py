@@ -89,34 +89,35 @@ async def collage(ctx):
         pass
 
 def search_image(query):
-    """Uses Serper.dev API to find high-quality images"""
     url = "https://google.serper.dev/images"
+    api_key = os.environ.get("SERPER_API_KEY")
     
-    # We ask for 'anime square' to get the best results for a 3x3 grid
-    payload = json.dumps({
-      "q": f"{query} anime square",
-      "num": 5
-    })
-    headers = {
-      'X-API-KEY': os.environ.get("SERPER_API_KEY"),
-      'Content-Type': 'application/json'
-    }
+    if not api_key:
+        print("❌ ERROR: SERPER_API_KEY is missing from environment variables!")
+        return None
+
+    payload = json.dumps({"q": f"{query} anime icon", "num": 5})
+    headers = {'X-API-KEY': api_key, 'Content-Type': 'application/json'}
 
     try:
         response = requests.post(url, headers=headers, data=payload, timeout=10)
         results = response.json()
         
-        # Loop through the first few results in case one is a dead link
-        if "images" in results:
+        # Check if the API returned an error message
+        if "message" in results:
+            print(f"❌ Serper API Message: {results['message']}")
+
+        if "images" in results and len(results["images"]) > 0:
             for img in results["images"]:
                 img_url = img["imageUrl"]
-                # Try to download the actual image data
                 img_res = requests.get(img_url, timeout=5, headers={"User-Agent": "Mozilla/5.0"})
                 if img_res.status_code == 200:
                     return img_res.content
+        else:
+            print(f"❓ No images found for: {query}")
         return None
     except Exception as e:
-        print(f"API Error for {query}: {e}")
+        print(f"⚠️ API Error for {query}: {e}")
         return None
 
 @bot.command()
