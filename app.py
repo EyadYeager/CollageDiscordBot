@@ -11,6 +11,8 @@ from logic import create_3x3_collage
 from duckduckgo_search import DDGS
 import requests
 import time 
+import json 
+
 # --- FLASK SETUP (To keep Render happy) ---
 app = Flask('')
 
@@ -88,25 +90,34 @@ async def collage(ctx):
         pass
 
 def search_image(query):
-    """Searches with a specific User-Agent to avoid blocks"""
-    # Adding 'icon' or 'square' helps get better 3x3 results
-    search_query = f"{query} anime square" 
+    """Uses Serper.dev API to find high-quality images"""
+    url = "https://google.serper.dev/images"
     
+    # We ask for 'anime square' to get the best results for a 3x3 grid
+    payload = json.dumps({
+      "q": f"{query} anime square",
+      "num": 5
+    })
+    headers = {
+      'X-API-KEY': os.environ.get("SERPER_API_KEY"),
+      'Content-Type': 'application/json'
+    }
+
     try:
-        with DDGS() as ddgs:
-            # We try to get the first 3 results as backups
-            results = ddgs.images(search_query, max_results=3)
-            if results:
-                for res in results:
-                    img_url = res['image']
-                    # This header makes the bot look like a real person browsing
-                    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"}
-                    img_res = requests.get(img_url, headers=headers, timeout=5)
-                    if img_res.status_code == 200:
-                        return img_res.content
+        response = requests.post(url, headers=headers, data=payload, timeout=10)
+        results = response.json()
+        
+        # Loop through the first few results in case one is a dead link
+        if "images" in results:
+            for img in results["images"]:
+                img_url = img["imageUrl"]
+                # Try to download the actual image data
+                img_res = requests.get(img_url, timeout=5, headers={"User-Agent": "Mozilla/5.0"})
+                if img_res.status_code == 200:
+                    return img_res.content
         return None
     except Exception as e:
-        print(f"Search error for {query}: {e}")
+        print(f"API Error for {query}: {e}")
         return None
 
 @bot.command()
@@ -125,20 +136,17 @@ async def list(ctx, *, text: str):
         if img_data:
             images.append(img_data)
         else:
-            # Fallback: If search fails, use a grey placeholder so the collage doesn't break
-            placeholder = Image.new('RGB', (300, 300), color=(70, 70, 70))
+            # Create a placeholder if image fails
+            placeholder = Image.new('RGB', (300, 300), color=(50, 50, 50))
             img_byte_arr = io.BytesIO()
             placeholder.save(img_byte_arr, format='PNG')
             images.append(img_byte_arr.getvalue())
             await ctx.send(f"⚠️ Could not find '{name}', using a placeholder.")
-        
-        time.sleep(1.5) # Wait 1.5 seconds between searches to avoid being banned
 
     await status_msg.edit(content="Stitching images together... 🎨")
     final_img = create_collage(images)
     await ctx.send(file=discord.File(fp=final_img, filename="my_list.png"))
     await status_msg.delete()
-
     
 # --- START BOTH ---
 if __name__ == "__main__":
