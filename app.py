@@ -8,6 +8,8 @@ from flask import Flask
 from dotenv import load_dotenv
 load_dotenv()  
 from logic import create_3x3_collage
+from duckduckgo_search import DDGS
+import requests
 
 # --- FLASK SETUP (To keep Render happy) ---
 app = Flask('')
@@ -84,6 +86,50 @@ async def collage(ctx):
         await ctx.send("I tried to delete the images but I don't have 'Manage Messages' permissions!")
     except discord.HTTPException:
         pass
+
+def search_image(query):
+    """Searches DuckDuckGo for an image and returns the raw bytes"""
+    with DDGS() as ddgs:
+        # We search for the query + " anime" to get better results
+        results = ddgs.images(f"{query} anime wallpaper", max_results=1)
+        if results:
+            img_url = results[0]['image']
+            response = requests.get(img_url, timeout=10)
+            return response.content
+    return None
+
+@bot.command()
+async def list(ctx, *, text: str):
+    """Usage: !list Naruto, One Piece, Bleach, etc (9 names)"""
+    names = [name.strip() for name in text.split(',')]
+    
+    if len(names) != 9:
+        return await ctx.send(f"I need exactly 9 names separated by commas! You gave me {len(names)}.")
+
+    processing_msg = await ctx.send(f"Searching for 9 images... 🔍 (This takes a few seconds)")
+    
+    images = []
+    for name in names:
+        try:
+            img_data = search_image(name)
+            if img_data:
+                images.append(img_data)
+            else:
+                await ctx.send(f"Could not find an image for: {name}")
+        except Exception as e:
+            print(f"Error searching for {name}: {e}")
+
+    if len(images) < 9:
+        return await ctx.send("Failed to find 9 valid images. Try different names!")
+
+    await processing_msg.edit(content="Creating your 3x3 list... 🎨")
+    
+    # Use your existing create_collage function
+    final_img = create_collage(images)
+    await ctx.send(content=f"Here is your 3x3 for: **{', '.join(names)}**", 
+                   file=discord.File(fp=final_img, filename="list_result.png"))
+    
+    await processing_msg.delete()
 
 # --- START BOTH ---
 if __name__ == "__main__":
