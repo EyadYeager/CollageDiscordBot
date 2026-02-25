@@ -3,3 +3,4 @@ Flask
 Pillow
 gunicorn
 python-dotenv
+duckduckgo_search
