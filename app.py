@@ -7,6 +7,7 @@ import threading
 from flask import Flask
 from dotenv import load_dotenv
 load_dotenv()  
+from logic import create_3x3_collage
 
 # --- FLASK SETUP (To keep Render happy) ---
 app = Flask('')
@@ -39,25 +40,33 @@ def create_collage(img_list):
 
 @bot.command()
 async def collage(ctx):
-    """Wait for 9 images to be sent or grab the last 9 images in chat"""
-    await ctx.send("Send me 9 images (or I will try to grab the last 9 sent here)!")
+    # 1. Look back at the last 50 messages (gives more room for errors)
+    await ctx.send("Scanning for images... 🔍")
     
     images = []
-    async for message in ctx.channel.history(limit=20):
+    async for message in ctx.channel.history(limit=50):
+        # 2. Skip the bot's own messages so they don't count towards the 'limit'
+        if message.author == bot.user:
+            continue
+            
         if message.attachments:
             for attachment in message.attachments:
-                if any(ext in attachment.url.lower() for ext in ['jpg', 'jpeg', 'png']):
+                if any(ext in attachment.url.lower() for ext in ['jpg', 'jpeg', 'png', 'webp']):
                     img_data = await attachment.read()
                     images.append(img_data)
+        
+        # Stop once we hit 9
         if len(images) >= 9:
             break
 
     if len(images) < 9:
-        return await ctx.send(f"I only found {len(images)} images. I need 9!")
+        return await ctx.send(f"I found {len(images)} images in recent history, but I need 9. Try waiting 5 seconds for uploads to finish!")
 
-    await ctx.send("Generating 3x3 collage... 🎨")
+    await ctx.send("Creating your 3x3 masterpiece... 🎨")
+    
+    # Run the processing in a separate thread so the bot doesn't "freeze"
     final_img = create_collage(images[:9])
-    await ctx.send(file=discord.File(fp=final_img, filename="collage.png"))
+    await ctx.send(file=discord.File(fp=final_img, filename="collage_result.png"))
 
 # --- START BOTH ---
 if __name__ == "__main__":
