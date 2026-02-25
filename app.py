@@ -10,7 +10,6 @@ load_dotenv()
 from logic import create_3x3_collage
 from duckduckgo_search import DDGS
 import requests
-import time 
 import json 
 
 # --- FLASK SETUP (To keep Render happy) ---
