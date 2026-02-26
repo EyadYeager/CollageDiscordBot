@@ -89,35 +89,28 @@ async def collage(ctx):
         pass
 
 def search_image(query):
-    url = "https://google.serper.dev/images"
-    api_key = os.environ.get("SERPER_API_KEY")
-    
+    """Uses Pixabay API (Email only, no phone required)"""
+    api_key = os.environ.get("PIXABAY_API_KEY")
     if not api_key:
-        print("❌ CRITICAL: SERPER_API_KEY is missing!")
+        print("❌ PIXABAY_API_KEY missing!")
         return None
 
-    # We use 'anime portrait' or 'anime icon' for better results
-    payload = json.dumps({"q": f"{query} anime icon", "num": 3})
-    headers = {
-        'X-API-KEY': api_key,
-        'Content-Type': 'application/json'
-    }
+    # We refine the search to 'anime' and 'illustrations' for better 3x3s
+    url = f"https://pixabay.com/api/?key={api_key}&q={query}+anime&image_type=illustration&per_page=3"
 
     try:
-        response = requests.post(url, headers=headers, data=payload, timeout=10)
+        response = requests.get(url, timeout=10)
         data = response.json()
         
-        # This will show up in your Render Logs so we can see what's wrong
-        if "images" in data and len(data["images"]) > 0:
-            img_url = data["images"][0]["imageUrl"]
-            img_res = requests.get(img_url, timeout=5, headers={"User-Agent": "Mozilla/5.0"})
+        if data.get("hits"):
+            img_url = data["hits"][0]["webformatURL"]
+            img_res = requests.get(img_url, timeout=5)
             if img_res.status_code == 200:
                 return img_res.content
         else:
-            print(f"❓ No search results for: {query}")
-            
+            print(f"❓ No Pixabay results for: {query}")
     except Exception as e:
-        print(f"⚠️ Search Error: {e}")
+        print(f"⚠️ Pixabay Error: {e}")
     return None
 
 @bot.command()
