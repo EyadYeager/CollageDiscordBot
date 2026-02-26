@@ -54,25 +54,24 @@ def create_collage(img_list, names_list):
     return img_byte_arr
 
 def search_image(query):
-    """Searches Pixabay for more 'Official' looking art"""
-    api_key = os.environ.get("PIXABAY_API_KEY")
-    if not api_key:
-        return None
-
-    # Changed search to 'official art' and 'photo' type for cleaner results
-    search_query = f"{query} anime official art"
-    url = f"https://pixabay.com/api/?key={api_key}&q={search_query}&image_type=photo&per_page=3"
+    """Uses Jikan API to find official MyAnimeList cover art"""
+    # Jikan doesn't need an API key for basic searches!
+    url = f"https://api.jikan.moe/v4/anime?q={query}&limit=1"
 
     try:
         response = requests.get(url, timeout=10)
         data = response.json()
-        if data.get("hits"):
-            img_url = data["hits"][0]["webformatURL"]
+        
+        if data.get("data") and len(data["data"]) > 0:
+            # This gets the standard 'large' cover image from MAL
+            img_url = data["data"][0]["images"]["jpg"]["large_image_url"]
             img_res = requests.get(img_url, timeout=5)
             if img_res.status_code == 200:
                 return img_res.content
-    except:
-        pass
+        else:
+            print(f"❓ No Jikan results for: {query}")
+    except Exception as e:
+        print(f"⚠️ Jikan Error: {e}")
     return None
 
 @bot.command()
