@@ -1,17 +1,16 @@
 import discord
 from discord.ext import commands
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 import os
 import io
 import threading
+import requests
 from flask import Flask
 from dotenv import load_dotenv
-load_dotenv()  
-from logic import create_3x3_collage
-import requests
-import json 
 
-# --- FLASK SETUP (To keep Render happy) ---
+load_dotenv()
+
+# --- FLASK SETUP ---
 app = Flask('')
 
 @app.route('/')
@@ -26,90 +25,54 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-def create_collage(img_list):
-    # Resize all to 300x300
-    imgs = [Image.open(io.BytesIO(i)).resize((300, 300)) for i in img_list]
+def create_collage(img_list, names_list):
+    """Stitches images and draws text labels at the bottom"""
+    imgs = [Image.open(io.BytesIO(i)).convert("RGB").resize((300, 300)) for i in img_list]
     collage = Image.new("RGB", (900, 900))
+    draw = ImageDraw.Draw(collage)
     
+    # Try to load a basic font
+    try:
+        font = ImageFont.load_default()
+    except:
+        font = None
+
     for i in range(3):
         for j in range(3):
-            collage.paste(imgs[i * 3 + j], (j * 300, i * 300))
+            index = i * 3 + j
+            # Paste the image
+            collage.paste(imgs[index], (j * 300, i * 300))
+            
+            # Draw a semi-transparent black bar for the name
+            draw.rectangle([j*300, i*300 + 265, j*300 + 300, i*300 + 300], fill=(0, 0, 0))
+            # Write the anime name
+            draw.text((j*300 + 10, i*300 + 275), names_list[index][:30], fill="white", font=font)
             
     img_byte_arr = io.BytesIO()
     collage.save(img_byte_arr, format='PNG')
     img_byte_arr.seek(0)
     return img_byte_arr
 
-@bot.command()
-async def collage(ctx):
-    await ctx.send("Scanning for images and preparing to clean up... 🔍")
-    
-    images = []
-    messages_to_delete = []
-    
-    async for message in ctx.channel.history(limit=50):
-        if message.author == bot.user:
-            continue
-            
-        if message.attachments:
-            found_image_in_msg = False
-            for attachment in message.attachments:
-                if any(ext in attachment.url.lower() for ext in ['jpg', 'jpeg', 'png', 'webp']):
-                    img_data = await attachment.read()
-                    images.append(img_data)
-                    found_image_in_msg = True
-            
-            # If this message had a valid image, save it for deletion later
-            if found_image_in_msg:
-                messages_to_delete.append(message)
-        
-        if len(images) >= 9:
-            break
-
-    if len(images) < 9:
-        return await ctx.send(f"I found {len(images)} images, but I need 9. I won't delete anything yet!")
-
-    processing_msg = await ctx.send("Creating masterpiece and cleaning up chat... 🎨")
-    
-    # Generate collage
-    final_img = create_collage(images[:9])
-    
-    # Send the final result
-    await ctx.send(file=discord.File(fp=final_img, filename="collage_result.png"))
-
-    # Cleanup: Delete the source messages and the "Scanning" message
-    try:
-        for msg in messages_to_delete:
-            await msg.delete()
-        await processing_msg.delete()
-    except discord.Forbidden:
-        await ctx.send("I tried to delete the images but I don't have 'Manage Messages' permissions!")
-    except discord.HTTPException:
-        pass
-
 def search_image(query):
-    """Uses Pixabay API (Email only, no phone required)"""
+    """Searches Pixabay for more 'Official' looking art"""
     api_key = os.environ.get("PIXABAY_API_KEY")
     if not api_key:
-        print("❌ PIXABAY_API_KEY missing!")
         return None
 
-    # We refine the search to 'anime' and 'illustrations' for better 3x3s
-    url = f"https://pixabay.com/api/?key={api_key}&q={query}+anime&image_type=illustration&per_page=3"
+    # Changed search to 'official art' and 'photo' type for cleaner results
+    search_query = f"{query} anime official art"
+    url = f"https://pixabay.com/api/?key={api_key}&q={search_query}&image_type=photo&per_page=3"
 
     try:
         response = requests.get(url, timeout=10)
         data = response.json()
-        
         if data.get("hits"):
             img_url = data["hits"][0]["webformatURL"]
             img_res = requests.get(img_url, timeout=5)
             if img_res.status_code == 200:
                 return img_res.content
-        else:
-            print(f"❓ No Pixabay results for: {query}")
-    except Exception as e:
-        print(f"⚠️ Pixabay Error: {e}")
+    except:
+        pass
     return None
 
 @bot.command()
@@ -118,7 +81,7 @@ async def list(ctx, *, text: str):
     if len(names) != 9:
         return await ctx.send(f"I need exactly 9 names! You gave me {len(names)}.")
 
-    status_msg = await ctx.send("Starting your anime search... 🚀")
+    status_msg = await ctx.send("Searching for official-style art... 🚀")
     images = []
     
     for name in names:
@@ -128,18 +91,17 @@ async def list(ctx, *, text: str):
         if img_data:
             images.append(img_data)
         else:
-            # Create a placeholder if image fails
-            placeholder = Image.new('RGB', (300, 300), color=(50, 50, 50))
+            # Fallback placeholder if no image found
+            placeholder = Image.new('RGB', (300, 300), color=(40, 40, 40))
             img_byte_arr = io.BytesIO()
             placeholder.save(img_byte_arr, format='PNG')
             images.append(img_byte_arr.getvalue())
-            await ctx.send(f"⚠️ Could not find '{name}', using a placeholder.")
 
-    await status_msg.edit(content="Stitching images together... 🎨")
-    final_img = create_collage(images)
-    await ctx.send(file=discord.File(fp=final_img, filename="my_list.png"))
+    await status_msg.edit(content="Generating your labeled 3x3... 🎨")
+    final_img = create_collage(images, names)
+    await ctx.send(file=discord.File(fp=final_img, filename="anime_list.png"))
     await status_msg.delete()
-    
+
 # --- START BOTH ---
 if __name__ == "__main__":
     t = threading.Thread(target=run_flask)
