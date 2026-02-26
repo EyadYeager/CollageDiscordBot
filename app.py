@@ -8,7 +8,6 @@ from flask import Flask
 from dotenv import load_dotenv
 load_dotenv()  
 from logic import create_3x3_collage
-from duckduckgo_search import DDGS
 import requests
 import json 
 
