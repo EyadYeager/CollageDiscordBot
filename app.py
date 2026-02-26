@@ -93,32 +93,32 @@ def search_image(query):
     api_key = os.environ.get("SERPER_API_KEY")
     
     if not api_key:
-        print("❌ ERROR: SERPER_API_KEY is missing from environment variables!")
+        print("❌ CRITICAL: SERPER_API_KEY is missing!")
         return None
 
-    payload = json.dumps({"q": f"{query} anime icon", "num": 5})
-    headers = {'X-API-KEY': api_key, 'Content-Type': 'application/json'}
+    # We use 'anime portrait' or 'anime icon' for better results
+    payload = json.dumps({"q": f"{query} anime icon", "num": 3})
+    headers = {
+        'X-API-KEY': api_key,
+        'Content-Type': 'application/json'
+    }
 
     try:
         response = requests.post(url, headers=headers, data=payload, timeout=10)
-        results = response.json()
+        data = response.json()
         
-        # Check if the API returned an error message
-        if "message" in results:
-            print(f"❌ Serper API Message: {results['message']}")
-
-        if "images" in results and len(results["images"]) > 0:
-            for img in results["images"]:
-                img_url = img["imageUrl"]
-                img_res = requests.get(img_url, timeout=5, headers={"User-Agent": "Mozilla/5.0"})
-                if img_res.status_code == 200:
-                    return img_res.content
+        # This will show up in your Render Logs so we can see what's wrong
+        if "images" in data and len(data["images"]) > 0:
+            img_url = data["images"][0]["imageUrl"]
+            img_res = requests.get(img_url, timeout=5, headers={"User-Agent": "Mozilla/5.0"})
+            if img_res.status_code == 200:
+                return img_res.content
         else:
-            print(f"❓ No images found for: {query}")
-        return None
+            print(f"❓ No search results for: {query}")
+            
     except Exception as e:
-        print(f"⚠️ API Error for {query}: {e}")
-        return None
+        print(f"⚠️ Search Error: {e}")
+    return None
 
 @bot.command()
 async def list(ctx, *, text: str):
